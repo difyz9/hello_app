@@ -1,0 +1,95 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.0'
+          channel: 'stable'
+          cache: true
+          
+      - name: Install dependencies
+        run: flutter pub get
+        
+      - name: Verify pub dependencies
+        run: flutter pub deps
+        
+      - name: Check for outdated dependencies
+        run: flutter pub outdated
+        
+      - name: Analyze code
+        run: flutter analyze --fatal-infos
+        
+      - name: Check formatting
+        run: dart format --set-exit-if-changed .
+        
+      - name: Run tests with coverage
+        run: flutter test --coverage
+        
+      - name: Check test coverage
+        run: |
+          # Install genhtml for coverage report generation
+          sudo apt-get update
+          sudo apt-get install -y lcov
+          
+          # Generate coverage report
+          genhtml coverage/lcov.info -o coverage/html
+          
+          # Check coverage percentage
+          COVERAGE=$(lcov --summary coverage/lcov.info | grep "lines......" | awk '{print $2}' | sed 's/%//')
+          echo "Coverage: $COVERAGE%"
+          
+          # Set minimum coverage threshold (adjust as needed)
+          MIN_COVERAGE=70
+          if (( $(echo "$COVERAGE < $MIN_COVERAGE" | bc -l) )); then
+            echo "Coverage $COVERAGE% is below minimum $MIN_COVERAGE%"
+            exit 1
+          fi
+        
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: coverage/lcov.info
+          fail_ci_if_error: false
+          
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/html/
+          
+      - name: Check for security vulnerabilities
+        run: |
+          # Install and run dart_code_metrics for additional analysis
+          dart pub global activate dart_code_metrics
+          dart pub global run dart_code_metrics:metrics analyze lib --reporter=github
+        continue-on-error: true
+        
+      - name: Lint commit messages (on PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          # Check if commit messages follow conventional commits
+          echo "Checking commit messages..."
+          git log --format="%s" ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} | while read line; do
+            if ! echo "$line" | grep -qE "^(feat|fix|docs|style|refactor|test|chore)(\(.+\))?: .+"; then
+              echo "❌ Commit message does not follow conventional commits: $line"
+              exit 1
+            else
+              echo "✅ Valid commit message: $line"
+            fi
+          done

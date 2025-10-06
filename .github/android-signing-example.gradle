@@ -1,0 +1,41 @@
+# 这是一个示例文件，展示如何配置 Android 签名
+# 实际使用时需要取消注释并替换为真实值
+
+# Android 签名配置
+# 将以下内容添加到 android/app/build.gradle.kts 的 android 块中
+
+android {
+    // ... 其他配置
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("keystore.jks")
+            storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: project.findProperty("storePassword") as String?
+            keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: project.findProperty("keyAlias") as String?
+            keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: project.findProperty("keyPassword") as String?
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+}
+
+# 或者使用 key.properties 文件的方式：
+# 1. 在 android/ 目录下创建 key.properties 文件（不要提交到版本控制）
+# 2. 内容如下：
+# storePassword=your_keystore_password
+# keyPassword=your_key_password  
+# keyAlias=your_key_alias
+# storeFile=keystore.jks
+
+# 然后在 build.gradle.kts 中读取：
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('key.properties')
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
